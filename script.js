@@ -464,6 +464,7 @@
             const weapon = inventory[selectedSlot];
             if (weapon) {
                 weaponSwitchIndicator.textContent = `EQUIPPED: ${weapon.name.toUpperCase()}`;
+                soundManager.playUI('weaponSwitch');
                 weaponSwitchIndicator.classList.add('show');
                 
                 setTimeout(() => {
@@ -519,6 +520,7 @@
             
             // Visual and audio feedback
             createUltimatePopup(player.x, player.y);
+            soundManager.playUltimate();
             
             // Update UI
             updateUI();
@@ -554,6 +556,7 @@
                             coins += 5;
                             createScorePopup(enemy.x, enemy.y, 10);
                             createCoinPopup(enemy.x, enemy.y, 5);
+                            soundManager.playExplosion();
                             dropLoot(enemy.x, enemy.y);
                             enemies.splice(j, 1);
                             enemiesDefeated++;
@@ -656,6 +659,7 @@
             if (coins >= cost) {
                 coins -= cost;
                 upgrade.level++;
+                soundManager.playUI('purchase');
                 
                 // Apply upgrade to all weapons
                 inventory.forEach(weapon => {
@@ -708,6 +712,7 @@
             updateUI();
             waveIndicator.textContent = `WAVE ${wave}`;
             waveIndicator.style.opacity = 1;
+            soundManager.playUI('waveStart');
             setTimeout(() => { waveIndicator.style.opacity = 0.8; }, 2000); // Keep it visible but slightly faded
         }
         
@@ -719,6 +724,7 @@
          */
         function checkWaveComplete() {
             if (enemiesDefeated >= enemiesInWave && enemies.length === 0) {
+                soundManager.playUI('waveComplete');
                 openUpgradeShop();
             }
         }
@@ -898,6 +904,8 @@
             running = true;
             reset();
             lastTime = performance.now();
+            // Initialize sound manager (requires user interaction)
+            soundManager.init();
             // Request fullscreen
             const gameContainer = document.getElementById('gameContainer');
             if (gameContainer && gameContainer.requestFullscreen) {
@@ -997,6 +1005,9 @@
                 // Start swing animation
                 player.swinging = true;
                 player.swingProgress = 0;
+                
+                // Play melee sound
+                soundManager.playMelee();
 
                 // Melee hit detection
                 for (let i = enemies.length - 1; i >= 0; i--) {
@@ -1011,6 +1022,7 @@
                             coins += 5;
                             createScorePopup(enemies[i].x, enemies[i].y, 10);
                             createCoinPopup(enemies[i].x, enemies[i].y, 5);
+                            soundManager.playExplosion();
                             dropLoot(enemies[i].x, enemies[i].y);
                             enemies.splice(i, 1);
                             enemiesDefeated++;
@@ -1044,6 +1056,9 @@
                     y: player.y + Math.sin(baseAngle) * (player.r + 20),
                     life: 0.05
                 });
+                
+                // Play weapon sound
+                soundManager.playWeaponSound(weapon.name);
 
                 // Fire projectiles
                 const count = weapon.projectileCount || 1;
@@ -1117,6 +1132,7 @@
                             // Show visual feedback
                             showAmmoAdded(existingSlot, ammoToAdd);
                             createAmmoPopup(player.x, player.y - 30, existingWeapon.name, ammoToAdd);
+                            soundManager.playPlayerSound('ammoPickup');
                             
                             // Remove the loot
                             groundLoot.splice(i, 1);
@@ -1143,6 +1159,7 @@
                             inventory[emptySlot].level = Math.max(upgrades.damage.level, upgrades.fireRate.level, upgrades.magazine.level);
                             
                             createAmmoPopup(player.x, player.y - 30, item.weapon.name, "Equipped");
+                            soundManager.playPlayerSound('ammoPickup');
                             groundLoot.splice(i, 1);
                             updateHotbarUI();
                         }
@@ -1157,6 +1174,7 @@
                     if (player.health < player.maxHealth) {
                         player.health = Math.min(player.health + item.value, player.maxHealth);
                         createHealthPopup(player.x, player.y, item.value);
+                        soundManager.playPlayerSound('heal');
                         healthItems.splice(i, 1);
                         updateUI();
                     }
@@ -1169,6 +1187,7 @@
                 if (dist(player, coin) < 30) {
                     coins += coin.value;
                     createCoinPopup(player.x, player.y, coin.value);
+                    soundManager.playPlayerSound('coinPickup');
                     coinsList.splice(i, 1);
                     updateUI();
                 }
@@ -1336,6 +1355,7 @@
                             coins += 5;
                             createScorePopup(e.x, e.y, 10);
                             createCoinPopup(e.x, e.y, 5);
+                            soundManager.playExplosion();
                             dropLoot(e.x, e.y);
                             enemies.splice(j, 1);
                             enemiesDefeated++;
@@ -1376,6 +1396,7 @@
                 if (dist(b, player) < b.r + player.r) {
                     player.health -= b.dmg;
                     createHitEffect(player.x, player.y);
+                    soundManager.playPlayerSound('damage');
                     if (player.health <= 0) gameOver();
                     updateUI();
                     enemyBullets.splice(i, 1);
