@@ -89,7 +89,20 @@
             swinging: false,
             swingProgress: 0,
             swingDuration: 0.2, // seconds
-            swingAngle: 0
+            swingAngle: 0,
+            // PHASE 2: XP and Leveling system
+            level: 1,
+            xp: 0,
+            xpToNext: 100,
+            // PHASE 2: Dash ability
+            dashReady: false, // Unlocked at level 2
+            dashCooldown: 0,
+            dashMaxCooldown: 3000, // 3 seconds
+            dashDistance: 250,
+            dashSpeed: 2000,
+            dashing: false,
+            dashTime: 0,
+            dashDuration: 0.15 // seconds
         };
 
         // Weapon upgrades
@@ -102,6 +115,11 @@
         // Inputs
         const keys = {};
         let mouse = { x: 0, y: 0, down: false };
+        
+        //  PHASE 3: Screen shake for visual juice
+        let screenShake = 0;
+        let screenShakeX = 0;
+        let screenShakeY = 0;
 
         // Arrays
         const bullets = [];
@@ -140,12 +158,13 @@
             bulletSpeed: 1100,
             magSize: 60,
             ammo: 60,
-            reserve: 180,
+            reserve: 360, // CRITICAL FIX: Increased from 180 to 360 for better ammo economy
             reloadTime: 1200,
             reloading: false,
             level: 1,
             projectileCount: 1,
-            spread: 0.02
+            spread: 0.02,
+            lastFired: 0 // CRITICAL FIX: Fire rate limiting
         };
 
         /*
@@ -173,7 +192,8 @@
                 reloading: false,
                 level: 1,
                 projectileCount,
-                spread
+                spread,
+                lastFired: 0 // CRITICAL FIX: Fire rate limiting
             };
         }
 
@@ -492,6 +512,160 @@
         }
 
         // ----------------------------------------------------------
+        // PHASE 2: XP AND LEVELING SYSTEM
+        // ----------------------------------------------------------
+
+        function awardXP(amount) {
+            player.xp += amount;
+            updateXPBar();
+            
+            // Check for level up
+            while (player.xp >= player.xpToNext) {
+                levelUp();
+            }
+        }
+
+        function levelUp() {
+            player.level++;
+            player.xp -= player.xpToNext;
+            player.xpToNext = Math.floor(player.xpToNext * 1.4); // 40% increase per level
+            
+            // Grant rewards based on level
+            grantLevelReward(player.level);
+            
+            // Play level up sound and show notification
+            soundManager.playPlayerSound('levelUp');
+            showLevelUpNotification(player.level);
+            
+            updateXPBar();
+        }
+
+        function grantLevelReward(level) {
+            // Level-based rewards
+            if (level === 2) {
+                player.dashReady = true;
+                console.log("🎉 Dash ability unlocked! Press SHIFT to dash");
+            }
+            
+            // Every level: small stat boost
+            player.baseMaxHealth += 10;
+            player.maxHealth += 10;
+            player.health = Math.min(player.health + 20, player.maxHealth); // Heal 20 HP on level up
+            
+            // Every 3 levels: damage boost
+            if (level % 3 === 0) {
+                inventory.forEach(weapon => {
+                    if (weapon && weapon.dmg) {
+                        weapon.dmg = Math.floor(weapon.dmg * 1.15);
+                    }
+                });
+            }
+            
+            // Every 5 levels: speed boost
+            if (level % 5 === 0) {
+                player.speed += 20;
+            }
+        }
+
+        function showLevelUpNotification(level) {
+            const notification = document.getElementById('levelUpNotification');
+            const levelBadge = document.getElementById('levelBadge');
+            
+            if (levelBadge) levelBadge.textContent = level;
+            
+            if (notification) {
+                notification.classList.remove('hidden');
+                notification.classList.add('show');
+                
+                if (level === 2) {
+                    notification.querySelector('.level-up-desc').textContent = 'DASH UNLOCKED (PRESS SHIFT)';
+                } else {
+                    notification.querySelector('.level-up-desc').textContent = `LEVEL ${level} REACHED!`;
+                }
+                
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                    notification.classList.add('hidden');
+                }, 3000);
+            }
+        }
+
+        function updateXPBar() {
+            const xpBarFill = document.getElementById('xpBarFill');
+            const levelBadge = document.getElementById('levelBadge');
+            
+            if (xpBarFill) {
+                const xpPercent = (player.xp / player.xpToNext) * 100;
+                xpBarFill.style.width = `${xpPercent}%`;
+            }
+            
+            if (levelBadge) {
+                levelBadge.textContent = player.level;
+            }
+        }
+
+        // ----------------------------------------------------------
+        // PHASE 2: CRITICAL HIT SYSTEM
+        // ----------------------------------------------------------
+
+        function calculateCriticalHit(baseDamage) {
+            const critChance = 0.15; // 15% critical hit chance
+            const critMultiplier = 2.0; // 2x damage on crit
+            
+            if (Math.random() < critChance) {
+                return {
+                    damage: Math.floor(baseDamage * critMultiplier),
+                    isCrit: true
+                };
+            }
+            
+            return {
+                damage: baseDamage,
+                isCrit: false
+            };
+        }
+
+        function showCriticalHitEffect(x, y, damage) {
+            // Create a larger, more prominent damage number for crits
+            const popup = document.createElement("div");
+            popup.className = "score-popup critical-hit";
+            popup.textContent = `${damage}!`;
+            popup.style.left = `${x}px`;
+            popup.style.top = `${y}px`;
+            popup.style.fontSize = "28px";
+            popup.style.color = "#ffaa00";
+            popup.style.textShadow = "0 0 10px #ff6600, 0 0 20px #ff6600";
+            popup.style.fontWeight = "bold";
+            document.getElementById("ui").appendChild(popup);
+            
+            setTimeout(() => {
+                popup.remove();
+            }, 1200);
+        }
+
+        // ----------------------------------------------------------
+        // PHASE 3: SCREEN SHAKE & VISUAL EFFECTS
+        // ----------------------------------------------------------
+
+        function addScreenShake(intensity = 10) {
+            screenShake = Math.max(screenShake, intensity);
+        }
+
+        function updateScreenShake(delta) {
+            if (screenShake > 0) {
+                screenShakeX = (Math.random() - 0.5) * screenShake;
+                screenShakeY = (Math.random() - 0.5) * screenShake;
+                screenShake *= 0.9; // Decay
+                
+                if (screenShake < 0.5) {
+                    screenShake = 0;
+                    screenShakeX = 0;
+                    screenShakeY = 0;
+                }
+            }
+        }
+
+        // ----------------------------------------------------------
         // SHOCK WAVE ULTIMATE
         // ----------------------------------------------------------
 
@@ -556,6 +730,8 @@
                             coins += 5;
                             createScorePopup(enemy.x, enemy.y, 10);
                             createCoinPopup(enemy.x, enemy.y, 5);
+                            // PHASE 2: Award XP for shock wave kills
+                            awardXP(12); // 12 XP for ultimate kills
                             soundManager.playExplosion();
                             dropLoot(enemy.x, enemy.y);
                             enemies.splice(j, 1);
@@ -612,6 +788,65 @@
                 ctx.strokeStyle = `rgba(255, 105, 180, ${0.3 - (wave.radius / wave.maxRadius) * 0.2})`;
                 ctx.lineWidth = 3;
                 ctx.stroke();
+            }
+        }
+
+        // ----------------------------------------------------------
+        // PHASE 2: DASH ABILITY
+        // ----------------------------------------------------------
+
+        function activateDash() {
+            if (paused || shopOpen || !running) return;
+            if (!player.dashReady || player.dashing) return;
+            if (player.dashCooldown > 0) return;
+            
+            // Calculate dash direction (toward mouse or movement direction)
+            let dashAngle;
+            const dx = keys["d"] ? 1 : (keys["a"] ? -1 : 0);
+            const dy = keys["s"] ? 1 : (keys["w"] ? -1 : 0);
+            
+            if (dx !== 0 || dy !== 0) {
+                // Dash in movement direction
+                dashAngle = Math.atan2(dy, dx);
+            } else {
+                // Dash toward mouse
+                dashAngle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+            }
+            
+            // Set dash state
+            player.dashing = true;
+            player.dashTime = 0;
+            player.dashCooldown = player.dashMaxCooldown;
+            
+            // Apply dash velocity
+            player.vx = Math.cos(dashAngle) * player.dashSpeed;
+            player.vy = Math.sin(dashAngle) * player.dashSpeed;
+            
+            // Visual/audio feedback
+            soundManager.playUI('weaponSwitch'); // Reuse a satisfying sound
+            console.log("💨 DASH!");
+        }
+
+        function updateDash(delta) {
+            // Update dash timer
+            if (player.dashing) {
+                player.dashTime += delta;
+                
+                if (player.dashTime >= player.dashDuration) {
+                    player.dashing = false;
+                    player.dashTime = 0;
+                    // Slow down after dash
+                    player.vx *= 0.3;
+                    player.vy *= 0.3;
+                }
+            }
+            
+            // Update cooldown
+            if (player.dashCooldown > 0) {
+                player.dashCooldown -= delta * 1000;
+                if (player.dashCooldown < 0) {
+                    player.dashCooldown = 0;
+                }
             }
         }
 
@@ -704,8 +939,8 @@
             enemiesInWave = 5 + wave * 2;
             enemiesDefeated = 0;
             spawnInterval = Math.max(200, 1000 - wave * 50);
-            // Increase player's max health by 20% per wave (wave1 = base)
-            const increaseFactor = 1 + 0.2 * Math.max(0, wave - 1);
+            // CRITICAL FIX: Cap health scaling at wave 10 to prevent immortality
+            const increaseFactor = 1 + 0.2 * Math.min(9, wave - 1); // Max 280 HP at wave 10
             player.maxHealth = Math.round(player.baseMaxHealth * increaseFactor);
             // Refill player health to new max
             player.health = player.maxHealth;
@@ -758,6 +993,12 @@
             // Shock Wave Ultimate (Q)
             if (e.key.toLowerCase() === "q") {
                 activateShockWave();
+            }
+            
+            // PHASE 2: Dash ability (Shift)
+            if (e.key === 'Shift') {
+                e.preventDefault();
+                activateDash();
             }
         });
 
@@ -1012,15 +1253,24 @@
                 // Melee hit detection
                 for (let i = enemies.length - 1; i >= 0; i--) {
                     if (dist(player, enemies[i]) <= weapon.range) {
-                        enemies[i].hp -= weapon.dmg;
-                        createHitEffect(enemies[i].x, enemies[i].y);
+                        // PHASE 2: Calculate critical hit
+                        const hitResult = calculateCriticalHit(weapon.dmg);
+                        enemies[i].hp -= hitResult.damage;
+                        
+                        if (hitResult.isCrit) {
+                            showCriticalHitEffect(enemies[i].x, enemies[i].y, hitResult.damage);
+                        } else {
+                            createHitEffect(enemies[i].x, enemies[i].y);
+                        }
                         
                         if (enemies[i].hp <= 0) {
                             // heal player by 10% of max health on enemy kill
                             player.health = Math.min(player.maxHealth, player.health + player.maxHealth * 0.10);
                             score += 10;
                             coins += 5;
-                            createScorePopup(enemies[i].x, enemies[i].y, 10);
+                            // PHASE 2: Award XP on kill
+                            awardXP(15); // 15 XP per melee kill
+                            createScorePopup(enemies[i].x, enemies[  i].y, 10);
                             createCoinPopup(enemies[i].x, enemies[i].y, 5);
                             soundManager.playExplosion();
                             dropLoot(enemies[i].x, enemies[i].y);
@@ -1037,6 +1287,11 @@
             if (weapon.type === "gun") {
                     if (paused) return;
                 if (weapon.reloading) return;
+                
+                // CRITICAL FIX: Fire rate limiting to prevent instant magazine dump
+                const now = performance.now();
+                if (now - weapon.lastFired < weapon.speed) return;
+                weapon.lastFired = now;
                 
                 // Auto-reload if out of ammo
                 if (weapon.ammo <= 0) {
@@ -1195,14 +1450,14 @@
         }
         
         function dropLoot(x, y) {
-            // Chance to drop weapon
-            if (Math.random() < 0.3) {
+            // CRITICAL FIX: Increased weapon drop chance (30% → 50%) for better ammo economy
+            if (Math.random() < 0.5) {
                 const randWeapon = Math.random();
                 let weaponType;
-                // Only drop modernized weapons: APFSDS, HEAT, Machine Gun (CE)
-                if (randWeapon < 0.45) weaponType = createGun("APFSDS", 45, 900, 8, 32);
-                else if (randWeapon < 0.85) weaponType = createGun("HEAT", 10, 70, 30, 120);
-                else weaponType = createGun("Machine Gun (CE)", 8, 80, 60, 180);
+                // Only drop modernized weapons with INCREASED AMMO RESERVES
+                if (randWeapon < 0.45) weaponType = createGun("APFSDS", 45, 900, 8, 64); // Was 32, now 64
+                else if (randWeapon < 0.85) weaponType = createGun("HEAT", 10, 70, 30, 240); // Was 120, now 240
+                else weaponType = createGun("Machine Gun (CE)", 8, 80, 60, 360); // Was 180, now 360
                 
                 groundLoot.push({ x, y, weapon: weaponType });
             }
@@ -1340,19 +1595,29 @@
                 for (let j = enemies.length - 1; j >= 0; j--) {
                     const e = enemies[j];
                     if (dist(b, e) < b.r + e.r) {
+                        // PHASE 2: Calculate critical hit
+                        const hitResult = calculateCriticalHit(b.dmg);
+                        
                         if (b.oneShot) {
                             // instant kill from ATGM
                             e.hp = 0;
                         } else {
-                            e.hp -= b.dmg;
+                            e.hp -= hitResult.damage;
                         }
-                        createHitEffect(e.x, e.y);
+                        
+                        if (hitResult.isCrit) {
+                            showCriticalHitEffect(e.x, e.y, hitResult.damage);
+                        } else {
+                            createHitEffect(e.x, e.y);
+                        }
 
                         if (e.hp <= 0) {
                             // heal player by 10% of max health on enemy kill
                             player.health = Math.min(player.maxHealth, player.health + player.maxHealth * 0.10);
                             score += 10;
                             coins += 5;
+                            // PHASE 2: Award XP - more for bullet kills
+                            awardXP(10); // 10 XP per bullet kill
                             createScorePopup(e.x, e.y, 10);
                             createCoinPopup(e.x, e.y, 5);
                             soundManager.playExplosion();
@@ -1394,9 +1659,13 @@
 
                 // Collision with Player
                 if (dist(b, player) < b.r + player.r) {
-                    player.health -= b.dmg;
+                    // CRITICAL FIX: Scale enemy damage with wave progression
+                    const scaledDamage = b.dmg + (wave * 1.5); // +1.5 damage per wave
+                    player.health -= scaledDamage;
                     createHitEffect(player.x, player.y);
                     soundManager.playPlayerSound('damage');
+                    // PHASE 3: Screen shake on damage
+                    addScreenShake(8);
                     if (player.health <= 0) gameOver();
                     updateUI();
                     enemyBullets.splice(i, 1);
@@ -1547,6 +1816,10 @@
             
             // Shockwaves
             updateShockWaves(delta);
+            // PHASE 2: Update dash ability
+            updateDash(delta);
+            // PHASE 3: Update screen shake
+            updateScreenShake(delta);
             
             // Loot pickup
             pickupNearbyLoot();
